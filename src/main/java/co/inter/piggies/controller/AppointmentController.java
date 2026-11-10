@@ -1,5 +1,7 @@
 package co.inter.piggies.controller;
 
+import co.inter.piggies.domain.appointment.AppointmentCancelRequestDTO;
+import co.inter.piggies.domain.appointment.AppointmentCancelResponseDTO;
 import co.inter.piggies.domain.appointment.AppointmentRequestDTO;
 import co.inter.piggies.domain.appointment.AppointmentResponseDTO;
 import co.inter.piggies.service.AppointmentService;
@@ -11,6 +13,7 @@ import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
 
 import java.util.List;
+import java.util.UUID;
 
 /*
  *-------------------------------------------------------------------------*
@@ -65,6 +68,27 @@ public class AppointmentController {
     @Post
     public HttpResponse<AppointmentResponseDTO> createAppointment(@Valid @Body AppointmentRequestDTO body) {
         return HttpResponse.created(appointmentService.createAppointment(body));
+    }
+
+    @Patch("/{id}/cancel")
+    public HttpResponse<AppointmentCancelResponseDTO> cancelAppointment
+            (@PathVariable UUID id, @Valid @Body AppointmentCancelRequestDTO body) {
+        return HttpResponse.ok(appointmentService.cancelAppointment(id, body));
+    }
+
+    @Get("/{id}")
+    public HttpResponse<AppointmentResponseDTO> getAppointmentById(@PathVariable UUID id) {
+        return HttpResponse.ok(appointmentService.getAppointmentById(id));
+    }
+
+    @Get("patient/{id}")
+    public HttpResponse<List<AppointmentResponseDTO>> getPatientAppointments(@PathVariable UUID id) {
+        return HttpResponse.ok(appointmentService.getPatientAppointments(id));
+    }
+
+    @Get("doctor/{id}")
+    public HttpResponse<List<AppointmentResponseDTO>> getDoctorAppointments(@PathVariable UUID id) {
+        return HttpResponse.ok(appointmentService.getDoctorAppointments(id));
     }
 
 }

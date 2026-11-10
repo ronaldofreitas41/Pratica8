@@ -4,6 +4,7 @@ import co.inter.piggies.domain.appointment.Appointment;
 import io.micronaut.data.jpa.repository.JpaRepository;
 import jakarta.data.repository.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /*
@@ -17,4 +18,6 @@ import java.util.UUID;
  */
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
+    boolean existsByDoctorIdAndStatusAndScheduledAtGreaterThanAndScheduledAtLessThan(
+            UUID doctorId, String status, OffsetDateTime inicio, OffsetDateTime fim);
 }

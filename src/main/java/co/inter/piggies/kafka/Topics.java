@@ -22,4 +22,5 @@ public final class Topics {
      *-----------------------------------------------*
      */
     public static final String APPOINTMENTCREATED = "appointment.created";
+    public static final String APPOINTMENTPROCESSED = "appointment.processed";
 }

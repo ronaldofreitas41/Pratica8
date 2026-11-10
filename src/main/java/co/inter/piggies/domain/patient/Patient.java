@@ -61,5 +61,4 @@ public class Patient {
 
     @OneToMany (mappedBy = "patient")
     private List<Appointment> apointments = new ArrayList<>();
-
 }
