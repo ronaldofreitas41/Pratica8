@@ -1,0 +1,30 @@
+# Aponta a aplicação para os containers do docker-compose.yml.
+# (Nos testes, o IntegrationTest sobrescreve tudo isso com os endereços dos Testcontainers.)
+
+micronaut:
+  application:
+    name: piggies-savings
+
+# Postgres (docker compose: serviço "postgres")
+datasources:
+  default:
+    url: jdbc:postgresql://localhost:5432/pratica8
+    username: pratica8
+    password: pratica8
+    driver-class-name: org.postgresql.Driver
+    db-type: postgres
+    dialect: POSTGRES
+
+# Hibernate cria/atualiza as tabelas a partir das @Entity (não há Flyway no projeto)
+jpa:
+  default:
+    properties:
+      hibernate:
+        hbm2ddl:
+          auto: update
+        show_sql: true
+
+# Kafka (docker compose: serviço "kafka")
+kafka:
+  bootstrap:
+    servers: localhost:9092

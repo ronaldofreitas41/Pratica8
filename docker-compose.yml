@@ -1,0 +1,75 @@
+# Infra local para RODAR a aplicação (mn:run / IntelliJ) durante o live code.
+# Os TESTES continuam usando Testcontainers (sobem containers próprios, em portas aleatórias),
+# então este compose não interfere neles.
+#
+# Subir:            docker compose up -d
+# Ver status:       docker compose ps
+# Logs do Kafka:    docker compose logs -f kafka
+# Derrubar:         docker compose down        (mantém os dados do Postgres)
+# Derrubar e zerar: docker compose down -v     (apaga os dados)
+# Com a UI do Kafka (opcional): docker compose --profile ui up -d   ->  http://localhost:8081
+
+services:
+
+  postgres:
+    image: postgres:16-alpine            # mesma imagem do PDF / Testcontainers
+    container_name: pratica8-postgres
+    environment:
+      POSTGRES_DB: pratica8
+      POSTGRES_USER: pratica8
+      POSTGRES_PASSWORD: pratica8
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U piggies -d piggies"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: apache/kafka-native:4.3.1     # mesma imagem do PDF / Testcontainers
+    container_name: pratica8-kafka
+    ports:
+      - "9092:9092"                      # usada pela aplicação rodando na sua máquina
+    environment:
+      # Modo KRaft (sem Zookeeper): um único nó que é broker e controller ao mesmo tempo
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+
+      # Dois "endereços" para clientes:
+      #  - PLAINTEXT (localhost:9092): para a sua aplicação, fora do Docker
+      #  - INTERNAL  (kafka:19092):    para outros containers (ex.: a Kafka UI)
+      KAFKA_LISTENERS: PLAINTEXT://:9092,INTERNAL://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+      # Com um único broker, todo fator de replicação precisa ser 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"   # cria o tópico no primeiro envio
+      KAFKA_NUM_PARTITIONS: 3                   # partições padrão dos tópicos criados automaticamente
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0 # consumer começa a receber mais rápido
+
+  # OPCIONAL: interface web para ver tópicos, mensagens, chaves e consumer groups.
+  # Só sobe com:  docker compose --profile ui up -d
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    container_name: pratica8-kafka-ui
+    profiles: ["ui"]
+    depends_on:
+      - kafka
+    ports:
+      - "8081:8080"                      # 8081 para não brigar com a aplicação (8080)
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
+
+volumes:
+  postgres_data:
