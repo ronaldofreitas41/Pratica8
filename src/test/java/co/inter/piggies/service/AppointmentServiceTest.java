@@ -10,6 +10,7 @@ import co.inter.piggies.domain.patient.Patient;
 import co.inter.piggies.domain.patient.PatientRequestDTO;
 import co.inter.piggies.domain.specialty.Specialty;
 import co.inter.piggies.domain.specialty.SpecialtyRequestDTO;
+import co.inter.piggies.kafka.events.AppointmentCreatedEventDTO;
 import co.inter.piggies.repository.AppointmentRepository;
 import co.inter.piggies.repository.DoctorRepository;
 import co.inter.piggies.repository.PatientRepository;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.testcontainers.shaded.org.awaitility.core.ThrowingRunnable;
 import org.zalando.problem.ThrowableProblem;
 
+import javax.print.Doc;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -46,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * fica no seu banco.                                                    *
  *-----------------------------------------------------------------------*
  */
+
 @MicronautTest(transactional = true)
 @NoArgsConstructor
 class AppointmentServiceTest {
@@ -154,6 +157,18 @@ class AppointmentServiceTest {
         );
     }
 
+    private AppointmentCreatedEventDTO criarEvento() {
+
+        Appointment a = salvarAppointment();
+
+        return new AppointmentCreatedEventDTO(
+                a.getId(),
+                a.getPatient().getId(),
+                a.getDoctor().getId(),
+                a.getScheduledAt()
+        );
+    }
+
     /*
      *--------------------------------------------------------------------*
      * Metodo auxiliar: gerarDataHora                                     *
@@ -191,12 +206,14 @@ class AppointmentServiceTest {
         DoctorRequestDTO body = criarDoctorRequest();
 
         Doctor doctor = new Doctor();
+        Specialty spec = salvarSpecialty();
 
         // Preencha aqui os campos obrigatórios da Doctor...
         //Ex: doctor.setType(body.type);
         doctor.setName(body.name());
         doctor.setCrm(body.crm());
-        doctor.setSpecialty(specialtyRepository.findByName(body.name()).orElse(null));
+        doctor.setSpecialty(spec);
+        doctor.setActive(true);
 
         return doctorRepository.save(doctor);
     }
@@ -333,11 +350,11 @@ class AppointmentServiceTest {
         salvarAppointmentParaDoctor(d);
 
         // When
-        List<AppointmentResponseDTO> resp = appointmentService.getPatientAppointments(d.getId());
+        List<AppointmentResponseDTO> resp = appointmentService.getDoctorAppointments(d.getId());
 
         // Then
-        assertEquals(d.getId(), resp.getFirst().patientId());
-        assertEquals(d.getId(), resp.getLast().patientId());
+        assertEquals(d.getId(), resp.getFirst().doctorId());
+        assertEquals(d.getId(), resp.getLast().doctorId());
         // Confira aqui os demais campos do ResponseDTO...
     }
 
@@ -353,10 +370,10 @@ class AppointmentServiceTest {
 
         // When + Then
         ThrowableProblem ex = assertThrows(ThrowableProblem.class,
-                () -> appointmentService.getAppointmentById(id));
+                () -> appointmentService.getDoctorAppointments(id));
 
         assertEquals(404, ex.getStatus().getStatusCode());
-        assertEquals("Paciente" + " de Id: " + id + " não existe!", ex.getDetail());
+        assertEquals("Medico" + " de Id: " + id + " não existe!", ex.getDetail());
     }
 
     // ===================== getPatientAppointmentById =====================
@@ -462,8 +479,8 @@ class AppointmentServiceTest {
         ThrowableProblem ex = assertThrows(ThrowableProblem.class,
                 () -> appointmentService.createAppointment(req));
 
-        assertEquals(404, ex.getStatus().getStatusCode());
-        assertEquals("Medico de Id: " + dInativo.getId() + " está desativado!" + p, ex.getDetail());
+        assertEquals(400, ex.getStatus().getStatusCode());
+        assertEquals("Medico de Id: " + dInativo.getId() + " está desativado!", ex.getDetail());
     }
 
     @Test
@@ -481,8 +498,8 @@ class AppointmentServiceTest {
         ThrowableProblem ex = assertThrows(ThrowableProblem.class,
                 () -> appointmentService.createAppointment(req));
 
-        assertEquals(404, ex.getStatus().getStatusCode());
-        assertEquals("Data de agendamento tem que ser superior a atual" + p, ex.getDetail());
+        assertEquals(400, ex.getStatus().getStatusCode());
+        assertEquals("Data de agendamento tem que ser superior a atual", ex.getDetail());
     }
 
     // ===================== updateAppointment =====================
@@ -491,13 +508,14 @@ class AppointmentServiceTest {
     void deveAtualizarAppointmentParaCancelar() {
         // Given
         Appointment salvo = salvarAppointment();
+        salvo.setStatus("CONFIRMED");
+        Appointment salvo2 = appointmentRepository.update(salvo);
 
         // When
-        appointmentService.cancelAppointment(salvo.getId(), criarAppointmentCancelRequest());
-
+        appointmentService.cancelAppointment(salvo2.getId(), criarAppointmentCancelRequest());
         // Then: busca de novo no banco e confere os dados alterados
-        Appointment atualizado = appointmentRepository.findById(salvo.getId()).orElseThrow();
-        assertEquals(atualizado.getStatus(), "CANCELED");
+        Appointment atualizado = appointmentRepository.findById(salvo2.getId()).orElseThrow();
+        assertEquals(atualizado.getStatus(), "CANCELLED");
         // Confira aqui se os campos foram alterados com os dados do body...
     }
 
@@ -518,12 +536,192 @@ class AppointmentServiceTest {
     void deveRetornar409QuandoCancelar2vezesAoAtualizar() {
         // Given: um id que com certeza NÃO existe no banco
         Appointment a = salvarAppointment();
+        a.setStatus("CONFIRMED");
+        Appointment salvo2 = appointmentRepository.update(a);
+
+        //Cancela a primeira vez
+        appointmentService.cancelAppointment(salvo2.getId(), criarAppointmentCancelRequest());
+
+        // When + Then
+        ThrowableProblem ex = assertThrows(ThrowableProblem.class,
+                () -> appointmentService.cancelAppointment(salvo2.getId(), criarAppointmentCancelRequest()));
+
+        assertEquals(409, ex.getStatus().getStatusCode());
+        assertEquals("Consulta de Id: " + a.getId() + " já foi cancelada", ex.getDetail());
+    }
+
+    @Test
+    void deveRetornar409QuandoStatusForDiferentedeCONFIRMEDAoAtualizar() {
+        // Given: um id que com certeza NÃO existe no banco
+        Appointment a = salvarAppointment();
 
         // When + Then
         ThrowableProblem ex = assertThrows(ThrowableProblem.class,
                 () -> appointmentService.cancelAppointment(a.getId(), criarAppointmentCancelRequest()));
 
         assertEquals(409, ex.getStatus().getStatusCode());
-        assertEquals("Consulta de Id: " + a.getId() + " já foi cancelada", ex.getDetail());
+        assertEquals("Consulta de Id: " + a.getId() + " não pode ser cancelada", ex.getDetail());
     }
+
+    // ===================== processingAppointment =====================
+
+    @Test
+    void deveProcessarAppointment() {
+        AppointmentCreatedEventDTO e = criarEvento();
+        Appointment eventAppontment = appointmentRepository.findById(e.appointmentId()).orElse(null);
+
+        appointmentService.processingAppointment(e);
+
+        // Then: foi REALMENTE gravado no Postgres
+        assertNotNull(eventAppontment);
+        assertEquals(eventAppontment.getStatus(),"CONFIRMED");
+    }
+
+    @Test
+    void naoDeveProcessarQuandoAppointmentNaoExiste() {
+        // Given
+        AppointmentCreatedEventDTO e = criarEvento();
+        AppointmentCreatedEventDTO eFake = new AppointmentCreatedEventDTO(
+                UUID.randomUUID(),      // id que não existe no banco
+                e.patientId(),
+                e.doctorId(),
+                e.scheduledAt()
+        );
+
+        assertTrue(appointmentRepository.findById(eFake.appointmentId()).isEmpty(),
+                "Pré-condição: o appointment fake não pode existir");
+
+        long totalAntes = appointmentRepository.count();
+        String statusOriginalAntes = appointmentRepository.findById(e.appointmentId())
+                .map(Appointment::getStatus)
+                .orElse(null);
+
+        // When: cai no if (appointment == null) e retorna sem exceção
+        assertDoesNotThrow(() -> appointmentService.processingAppointment(eFake));
+
+        // Then: nada foi criado no Postgres
+        assertTrue(appointmentRepository.findById(eFake.appointmentId()).isEmpty());
+        assertEquals(totalAntes, appointmentRepository.count());
+
+        // e o agendamento real não foi afetado
+        String statusOriginalDepois = appointmentRepository.findById(e.appointmentId())
+                .map(Appointment::getStatus)
+                .orElse(null);
+        assertEquals(statusOriginalAntes, statusOriginalDepois);
+    }
+
+    @Test
+    void deveRetornarREJECTEDPorCausadoPatientProcessarAppointment() {
+        AppointmentCreatedEventDTO e = criarEvento();
+        AppointmentCreatedEventDTO eFake = new AppointmentCreatedEventDTO(
+                e.appointmentId(),
+                UUID.randomUUID(),      // id que não existe no banco
+                e.doctorId(),
+                e.scheduledAt()
+        );
+
+        Appointment eventAppontment = appointmentRepository.findById(eFake.appointmentId()).orElse(null);
+        Doctor eventDoctor = doctorRepository.findById(eFake.doctorId()).orElse(null);
+        Patient eventPatient = patientRepository.findById(eFake.patientId()).orElse(null);
+
+        assertNotNull(eventDoctor);
+        assertNotNull(eventAppontment);
+        assertNull(eventPatient);
+
+        appointmentService.processingAppointment(eFake);
+
+        // Then: foi REALMENTE gravado no Postgres
+
+        assertEquals(eventAppontment.getStatus(),"REJECTED");
+        assertEquals(eventAppontment.getCancellationReason(),"PATIENT_NOT_FOUND");
+    }
+
+    @Test
+    void deveRetornarREJECTEDPorCausadoDoctorProcessarAppointment() {
+        AppointmentCreatedEventDTO e = criarEvento();
+        AppointmentCreatedEventDTO eFake = new AppointmentCreatedEventDTO(
+                e.appointmentId(),
+                e.patientId(),
+                UUID.randomUUID(),      // id que não existe no banco
+                e.scheduledAt()
+        );
+
+        Appointment eventAppontment = appointmentRepository.findById(eFake.appointmentId()).orElse(null);
+        Doctor eventDoctor = doctorRepository.findById(eFake.doctorId()).orElse(null);
+        Patient eventPatient = patientRepository.findById(eFake.patientId()).orElse(null);
+
+        assertNull(eventDoctor);
+        assertNotNull(eventAppontment);
+        assertNotNull(eventPatient);
+
+        appointmentService.processingAppointment(eFake);
+
+        // Then: foi REALMENTE gravado no Postgres
+        assertEquals(eventAppontment.getStatus(),"REJECTED");
+        assertEquals(eventAppontment.getCancellationReason(),"DOCTOR_NOT_FOUND");
+    }
+
+    @Test
+    void deveRetornarREJECTEDPorCausadoDoctorInativoProcessarAppointment() {
+        AppointmentCreatedEventDTO e = criarEvento();
+        Appointment eventAppontment = appointmentRepository.findById(e.appointmentId()).orElse(null);
+        Doctor eventDoctor = doctorRepository.findById(e.doctorId()).orElse(null);
+        Patient eventPatient = patientRepository.findById(e.patientId()).orElse(null);
+
+        assertNotNull(eventDoctor);
+        assertNotNull(eventAppontment);
+        assertNotNull(eventPatient);
+
+        eventDoctor.setActive(false);
+
+        Doctor eventDoctor2 = doctorRepository.update(eventDoctor);
+
+        assertFalse(eventDoctor2.isActive());
+
+        appointmentService.processingAppointment(e);
+
+        // Then: foi REALMENTE gravado no Postgres
+        assertEquals(eventAppontment.getStatus(),"REJECTED");
+        assertEquals(eventAppontment.getCancellationReason(),"DOCTOR_INACTIVE");
+    }
+
+    @Test
+    void deveRetornarREJECTEDPorCausadoDoctorIdisponivelProcessarAppointment() {
+        AppointmentCreatedEventDTO e = criarEvento();
+        AppointmentCreatedEventDTO e2 = new AppointmentCreatedEventDTO(
+                salvarAppointment().getId(),
+                salvarPatient().getId(),
+                e.doctorId(),
+                e.scheduledAt()
+        );
+
+        Appointment eventAppontment = appointmentRepository.findById(e.appointmentId()).orElse(null);
+        Doctor eventDoctor = doctorRepository.findById(e.doctorId()).orElse(null);
+        Patient eventPatient = patientRepository.findById(e.patientId()).orElse(null);
+
+        assertNotNull(eventDoctor);
+        assertNotNull(eventAppontment);
+        assertNotNull(eventPatient);
+
+
+        appointmentService.processingAppointment(e);
+
+        assertEquals(eventAppontment.getStatus(),"CONFIRMED");
+
+        Appointment event2Appontment = appointmentRepository.findById(e2.appointmentId()).orElse(null);
+        Doctor event2Doctor = doctorRepository.findById(e2.doctorId()).orElse(null);
+        Patient event2Patient = patientRepository.findById(e2.patientId()).orElse(null);
+
+        assertNotNull(event2Doctor);
+        assertNotNull(event2Appontment);
+        assertNotNull(event2Patient);
+
+
+        appointmentService.processingAppointment(e);
+
+        // Then: foi REALMENTE gravado no Postgres
+        assertEquals(eventAppontment.getStatus(),"REJECTED");
+        assertEquals(eventAppontment.getCancellationReason(),"DOCTOR_UNAVAILABLE");
+    }
+
 }

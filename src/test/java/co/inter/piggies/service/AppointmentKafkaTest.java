@@ -75,6 +75,7 @@ class AppointmentKafkaTest {
     @Inject
     AppointmentSaidaTestListener saidaListener;
 
+    @Inject
     public static AppointmentServiceTest a = new AppointmentServiceTest();
 
     /*
@@ -190,7 +191,7 @@ class AppointmentKafkaTest {
 
         return new AppointmentRequestDTO(
                 appointment.getPatient().getId(),
-                appointment.getPatient().getId(),
+                appointment.getDoctor().getId(),
                 appointment.getScheduledAt()
         );
     }

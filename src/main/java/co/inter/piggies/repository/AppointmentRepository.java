@@ -5,6 +5,7 @@ import io.micronaut.data.jpa.repository.JpaRepository;
 import jakarta.data.repository.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /*
@@ -21,6 +22,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, UUID> 
     boolean existsByDoctorIdAndStatusAndScheduledAtGreaterThanAndScheduledAtLessThan(
             UUID doctorId, String status, OffsetDateTime inicio, OffsetDateTime fim);
 
-    int countById(UUID id);
+    List<Appointment> findAllByDoctorId(UUID id);
 
+    List<Appointment> findAllByPatientId(UUID id);
 }

@@ -7,6 +7,7 @@ import co.inter.piggies.kafka.consumer.AppointmentProcessingConsumer;
 import co.inter.piggies.kafka.events.AppointmentCreatedEventDTO;
 import co.inter.piggies.kafka.events.AppointmentProcessedEventDTO;
 import co.inter.piggies.kafka.producer.AppointmentCreatedProducer;
+import co.inter.piggies.kafka.producer.AppointmentProcessedProducer;
 import co.inter.piggies.repository.AppointmentRepository;
 import co.inter.piggies.repository.DoctorRepository;
 import co.inter.piggies.repository.PatientRepository;
@@ -38,6 +39,9 @@ public class AppointmentService {
 
     @Inject
     PatientRepository patientRepository;
+
+    @Inject
+    AppointmentProcessedProducer appointmentProcessedProducer;
 
     @Inject
     private static Logger LOG = LoggerFactory.getLogger(AppointmentProcessingConsumer.class);
@@ -117,6 +121,17 @@ public class AppointmentService {
             makeWarnLogNotExists("Paciente", event.patientId());
             appointment.setStatus("REJECTED");
             appointment.setCancellationReason("PATIENT_NOT_FOUND");
+
+            Appointment appointmentUpdated = appointmentRepository.update(appointment);
+
+            AppointmentProcessedEventDTO eventProcessed = new AppointmentProcessedEventDTO(
+                    appointmentUpdated.getId(),
+                    appointmentUpdated.getStatus(),
+                    appointmentUpdated.getCancellationReason()
+            );
+
+            appointmentProcessedProducer.send(appointmentUpdated.getDoctor().getId(), eventProcessed);
+            return;
         }
 
         //4 -> Verificar se o médico existe e está ativo.
@@ -126,12 +141,34 @@ public class AppointmentService {
             makeWarnLogNotExists("Medico", event.patientId());
             appointment.setStatus("REJECTED");
             appointment.setCancellationReason("DOCTOR_NOT_FOUND");
+
+            Appointment appointmentUpdated = appointmentRepository.update(appointment);
+
+            AppointmentProcessedEventDTO eventProcessed = new AppointmentProcessedEventDTO(
+                    appointmentUpdated.getId(),
+                    appointmentUpdated.getStatus(),
+                    appointmentUpdated.getCancellationReason()
+            );
+
+            appointmentProcessedProducer.send(appointmentUpdated.getDoctor().getId(), eventProcessed);
+            return;
         }
 
-        if (doctor.isActive()) {
+        if (!doctor.isActive()) {
             LOG.warn("Medico de id: {}, está inativo", doctor.getId());
             appointment.setStatus("REJECTED");
             appointment.setCancellationReason("DOCTOR_INACTIVE");
+
+            Appointment appointmentUpdated = appointmentRepository.update(appointment);
+
+            AppointmentProcessedEventDTO eventProcessed = new AppointmentProcessedEventDTO(
+                    appointmentUpdated.getId(),
+                    appointmentUpdated.getStatus(),
+                    appointmentUpdated.getCancellationReason()
+            );
+
+            appointmentProcessedProducer.send(appointmentUpdated.getDoctor().getId(), eventProcessed);
+            return;
         }
 
         //5 -> Verificar se já existe uma consulta CONFIRMED para o mesmo médico e horário.
@@ -147,10 +184,22 @@ public class AppointmentService {
             LOG.warn("Horario não disponivel para o Medico de id: {} ", event.doctorId());
             appointment.setStatus("REJECTED");
             appointment.setCancellationReason("DOCTOR_UNAVAILABLE");
-        } else {
-            //6 -> Se estiver disponível, alterar para CONFIRMED.
-            appointment.setStatus("CONFIRMED");
+
+            Appointment appointmentUpdated = appointmentRepository.update(appointment);
+
+            AppointmentProcessedEventDTO eventProcessed = new AppointmentProcessedEventDTO(
+                    appointmentUpdated.getId(),
+                    appointmentUpdated.getStatus(),
+                    appointmentUpdated.getCancellationReason()
+            );
+
+            appointmentProcessedProducer.send(appointmentUpdated.getDoctor().getId(), eventProcessed);
+            return;
         }
+
+        //6 -> Se estiver disponível, alterar para CONFIRMED.
+        appointment.setStatus("CONFIRMED");
+
         //8 -> Publicar o resultado no tópico appointment.processed.
         Appointment appointmentUpdated = appointmentRepository.update(appointment);
 
@@ -158,22 +207,33 @@ public class AppointmentService {
                 appointmentUpdated.getId(),
                 appointmentUpdated.getStatus(),
                 appointmentUpdated.getCancellationReason()
-                );
+        );
+
+        appointmentProcessedProducer.send(appointmentUpdated.getDoctor().getId(), eventProcessed);
     }
 
-    public AppointmentCancelResponseDTO cancelAppointment(UUID id,AppointmentCancelRequestDTO body){
-        Appointment appointment = appointmentRepository.findById(id)
-                .orElseThrow(()-> notFound("Agendamento",id));
+    public AppointmentCancelResponseDTO cancelAppointment(UUID id, AppointmentCancelRequestDTO body) {
 
-        if (appointment.getStatus().equals("CANCELED")){
+        Appointment appointment = appointmentRepository.findById(id)
+                .orElseThrow(() -> notFound("Agendamento", id));
+
+        if (appointment.getStatus().equals("CANCELLED")) {
             throw Problem.builder()
-                    .withStatus(new HttpStatusType(HttpStatus.NOT_FOUND))
+                    .withStatus(new HttpStatusType(HttpStatus.CONFLICT))
                     .withTitle("Não encontrado")
                     .withDetail("Consulta de Id: " + id + " já foi cancelada")
                     .build();
         }
 
-        appointment.setStatus("CANCELED");
+        if (!appointment.getStatus().equals("CONFIRMED")) {
+            throw Problem.builder()
+                    .withStatus(new HttpStatusType(HttpStatus.CONFLICT))
+                    .withTitle("Não encontrado")
+                    .withDetail("Consulta de Id: " + id + " não pode ser cancelada")
+                    .build();
+        }
+
+        appointment.setStatus("CANCELLED");
         appointment.setCancellationReason(body.reason());
 
         Appointment appointmentUpdated = appointmentRepository.update(appointment);
@@ -181,25 +241,27 @@ public class AppointmentService {
         return AppointmentCancelResponseDTO.from(appointmentUpdated);
     }
 
-    public AppointmentResponseDTO getAppointmentById(UUID id){
+    public AppointmentResponseDTO getAppointmentById(UUID id) {
         Appointment appointment = appointmentRepository
-                .findById(id).orElseThrow(()-> notFound("Agendamento",id));
+                .findById(id).orElseThrow(() -> notFound("Agendamento", id));
 
         return AppointmentResponseDTO.from(appointment);
     }
 
-    public List<AppointmentResponseDTO> getPatientAppointments(UUID id){
+    public List<AppointmentResponseDTO> getPatientAppointments(UUID id) {
         Patient patient = patientRepository
-                .findById(id).orElseThrow(()-> notFound("Paciente",id));
+                .findById(id).orElseThrow(() -> notFound("Paciente", id));
 
-        return patient.getApointments().stream().map(AppointmentResponseDTO::from).toList();
+        return appointmentRepository.findAllByPatientId(patient.getId()).
+                stream().map(AppointmentResponseDTO::from).toList();
     }
 
-    public List<AppointmentResponseDTO> getDoctorAppointments(UUID id){
+    public List<AppointmentResponseDTO> getDoctorAppointments(UUID id) {
         Doctor doctor = doctorRepository
-                .findById(id).orElseThrow(()-> notFound("Medico",id));
+                .findById(id).orElseThrow(() -> notFound("Medico", id));
 
-        return doctor.getApointments().stream().map(AppointmentResponseDTO::from).toList();
+        return appointmentRepository.findAllByDoctorId(doctor.getId())
+                .stream().map(AppointmentResponseDTO::from).toList();
     }
 
     private static ThrowableProblem notFound(String nome, UUID id) {
