@@ -108,6 +108,24 @@ class AppointmentServiceTest {
         appointmentRepository.save(appointment);
     }
 
+    private AppointmentCancelRequestDTO criarAppointmentCancelRequest() {
+        return new AppointmentCancelRequestDTO(
+                "Por que Deus quis"
+        );
+    }
+
+    private AppointmentCreatedEventDTO criarEvento() {
+
+        Appointment a = salvarAppointment();
+
+        return new AppointmentCreatedEventDTO(
+                a.getId(),
+                a.getPatient().getId(),
+                a.getDoctor().getId(),
+                a.getScheduledAt()
+        );
+    }
+
     /*
      *--------------------------------------------------------------------*
      * Metodo auxiliar: salvarAppointment                                    *
@@ -151,24 +169,6 @@ class AppointmentServiceTest {
         );
     }
 
-    private AppointmentCancelRequestDTO criarAppointmentCancelRequest() {
-        return new AppointmentCancelRequestDTO(
-                "Por que Deus quis"
-        );
-    }
-
-    private AppointmentCreatedEventDTO criarEvento() {
-
-        Appointment a = salvarAppointment();
-
-        return new AppointmentCreatedEventDTO(
-                a.getId(),
-                a.getPatient().getId(),
-                a.getDoctor().getId(),
-                a.getScheduledAt()
-        );
-    }
-
     /*
      *--------------------------------------------------------------------*
      * Metodo auxiliar: gerarDataHora                                     *
@@ -178,7 +178,7 @@ class AppointmentServiceTest {
      *            sem segundos, no fuso de São Paulo (-03:00).            *
      *--------------------------------------------------------------------*
      */
-    public OffsetDateTime gerarDataHora() {
+    private OffsetDateTime gerarDataHora() {
         ThreadLocalRandom random = ThreadLocalRandom.current();
 
         int dias = random.nextInt(1, 366);   // 1 a 365 dias à frente
