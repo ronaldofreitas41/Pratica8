@@ -165,6 +165,14 @@ public class AppointmentService {
         Appointment appointment = appointmentRepository.findById(id)
                 .orElseThrow(()-> notFound("Agendamento",id));
 
+        if (appointment.getStatus().equals("CANCELED")){
+            throw Problem.builder()
+                    .withStatus(new HttpStatusType(HttpStatus.NOT_FOUND))
+                    .withTitle("Não encontrado")
+                    .withDetail("Consulta de Id: " + id + " já foi cancelada")
+                    .build();
+        }
+
         appointment.setStatus("CANCELED");
         appointment.setCancellationReason(body.reason());
 

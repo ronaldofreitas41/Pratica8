@@ -17,6 +17,8 @@ import java.util.UUID;
 @Serdeable
 public record AppointmentResponseDTO(
         UUID appointmentId,
+        UUID doctorId,
+        UUID patientId,
         String patient,
         String doctor,
         String sheduledAt,
@@ -31,6 +33,8 @@ public record AppointmentResponseDTO(
     public static AppointmentResponseDTO from(Appointment appointment) {
         return new AppointmentResponseDTO(
                 appointment.getId(),
+                appointment.getDoctor().getId(),
+                appointment.getPatient().getId(),
                 appointment.getPatient().getName(),
                 appointment.getDoctor().getName(),
                 formataData(appointment.getScheduledAt()),

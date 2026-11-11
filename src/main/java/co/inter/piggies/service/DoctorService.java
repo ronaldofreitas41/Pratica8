@@ -109,7 +109,7 @@ public class DoctorService {
                 Problem.builder()
                         .withStatus(new HttpStatusType(HttpStatus.NOT_FOUND))
                         .withTitle("Não encontrado")
-                        .withDetail("Especialidade: " + body.name() + " Não existe")
+                        .withDetail("Especialidade: " + body.specialty() + " Não existe")
                         .build()
         );
 
@@ -159,7 +159,7 @@ public class DoctorService {
                 Problem.builder()
                         .withStatus(new HttpStatusType(HttpStatus.NOT_FOUND))
                         .withTitle("Não encontrado")
-                        .withDetail("Especialidade: " + body.name() + " Não existe")
+                        .withDetail("Especialidade: " + body.specialty() + " Não existe")
                         .build()
         );
 

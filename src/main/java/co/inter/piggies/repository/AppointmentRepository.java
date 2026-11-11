@@ -20,4 +20,7 @@ import java.util.UUID;
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
     boolean existsByDoctorIdAndStatusAndScheduledAtGreaterThanAndScheduledAtLessThan(
             UUID doctorId, String status, OffsetDateTime inicio, OffsetDateTime fim);
+
+    int countById(UUID id);
+
 }
