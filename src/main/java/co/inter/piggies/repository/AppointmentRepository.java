@@ -1,7 +1,9 @@
 package co.inter.piggies.repository;
 
 import co.inter.piggies.domain.appointment.Appointment;
+import io.micronaut.data.annotation.Query;
 import io.micronaut.data.jpa.repository.JpaRepository;
+import jakarta.data.repository.Param;
 import jakarta.data.repository.Repository;
 
 import java.time.OffsetDateTime;
@@ -19,8 +21,15 @@ import java.util.UUID;
  */
 @Repository
 public interface AppointmentRepository extends JpaRepository<Appointment, UUID> {
-    boolean existsByDoctorIdAndStatusAndScheduledAtGreaterThanAndScheduledAtLessThan(
-            UUID doctorId, String status, OffsetDateTime inicio, OffsetDateTime fim);
+
+    @Query("SELECT COUNT(a) FROM Appointment a "
+            + "WHERE a.doctor.id = :doctorId "
+            + "AND a.status = :status "
+            + "AND a.scheduledAt BETWEEN :inicio AND :fim")
+    long horarioOcupado(@Param("doctorId") UUID doctorId,
+                       @Param("status") String status,
+                       @Param("inicio") OffsetDateTime inicio,
+                       @Param("fim") OffsetDateTime fim);
 
     List<Appointment> findAllByDoctorId(UUID id);
 

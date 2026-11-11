@@ -686,7 +686,7 @@ class AppointmentServiceTest {
     }
 
     @Test
-    void deveRetornarREJECTEDPorCausadoDoctorIdisponivelProcessarAppointment() {
+    void deveRetornarREJECTEDPorCausadoDoctorIndisponivelProcessarAppointment() {
         AppointmentCreatedEventDTO e = criarEvento();
         AppointmentCreatedEventDTO e2 = new AppointmentCreatedEventDTO(
                 salvarAppointment().getId(),
@@ -717,11 +717,11 @@ class AppointmentServiceTest {
         assertNotNull(event2Patient);
 
 
-        appointmentService.processingAppointment(e);
+        appointmentService.processingAppointment(e2);
 
         // Then: foi REALMENTE gravado no Postgres
-        assertEquals(eventAppontment.getStatus(),"REJECTED");
-        assertEquals(eventAppontment.getCancellationReason(),"DOCTOR_UNAVAILABLE");
+        assertEquals("REJECTED", event2Appontment.getStatus());
+        assertEquals("DOCTOR_UNAVAILABLE", event2Appontment.getCancellationReason());
     }
 
 }

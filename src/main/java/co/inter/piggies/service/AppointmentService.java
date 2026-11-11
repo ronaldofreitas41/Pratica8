@@ -173,15 +173,14 @@ public class AppointmentService {
 
         //5 -> Verificar se já existe uma consulta CONFIRMED para o mesmo médico e horário.
         //7 -> Se estiver ocupado, alterar para REJECTED.
-        OffsetDateTime inicio = appointment.getScheduledAt().minusMinutes(30);
-        OffsetDateTime fim = appointment.getScheduledAt().plusMinutes(30);
-        if (appointmentRepository.existsByDoctorIdAndStatusAndScheduledAtGreaterThanAndScheduledAtLessThan(
+        OffsetDateTime inicio = event.scheduledAt().minusMinutes(30);
+        OffsetDateTime fim = event.scheduledAt().plusMinutes(30);
+        if (appointmentRepository.horarioOcupado(
                 event.doctorId(),
                 "CONFIRMED",
                 inicio,
                 fim
-        )) {
-            LOG.warn("Horario não disponivel para o Medico de id: {} ", event.doctorId());
+        ) > 0) {
             appointment.setStatus("REJECTED");
             appointment.setCancellationReason("DOCTOR_UNAVAILABLE");
 
@@ -196,7 +195,6 @@ public class AppointmentService {
             appointmentProcessedProducer.send(appointmentUpdated.getDoctor().getId(), eventProcessed);
             return;
         }
-
         //6 -> Se estiver disponível, alterar para CONFIRMED.
         appointment.setStatus("CONFIRMED");
 
